@@ -267,7 +267,8 @@ MIT License - lihat file [LICENSE](LICENSE) untuk detail.
 
 ## 👨‍💻 Developer
 
-Dikembangkan untuk Universitas Nahdlatul Ulama Gorontalo
+Dikembangkan untuk Universitas Nahdlatul Ulama Al Ghazali Cilacap
+Kontak Developer : https://ssdi.unugha.ac.id
 
 ---
 
