@@ -38,7 +38,7 @@ interface ProtectedRouteProps {
 }
 
 const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole }) => {
-  const { user, userProfile, loading } = useAuth()
+  const { user, loading } = useAuth()
 
   if (loading) {
     return <LoadingSpinner />
@@ -48,7 +48,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, requiredRole 
     return <Navigate to="/login" replace />
   }
 
-  if (requiredRole && userProfile && !requiredRole.includes(userProfile.role)) {
+  if (requiredRole && user && !requiredRole.includes(user.role)) {
     return <Navigate to="/dashboard" replace />
   }
 

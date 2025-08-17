@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useNavigate, useLocation } from 'react-router-dom'
-import { supabase, Tables } from '../../lib/supabase'
+import { ruanganAPI, kendaraanAPI, peminjamanAPI, Room, Vehicle, Booking } from '../../lib/api'
 import { useAuth } from '../../contexts/AuthContext'
 import { 
   Building, 
@@ -35,9 +35,9 @@ const BookingPage: React.FC = () => {
   const location = useLocation()
   const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
-  const [rooms, setRooms] = useState<Tables<'ruangan'>[]>([])
-  const [vehicles, setVehicles] = useState<Tables<'kendaraan'>[]>([])
-  const [existingBookings, setExistingBookings] = useState<Tables<'peminjaman'>[]>([])
+  const [rooms, setRooms] = useState<Room[]>([])
+  const [vehicles, setVehicles] = useState<Vehicle[]>([])
+  const [existingBookings, setExistingBookings] = useState<Booking[]>([])
   const [conflicts, setConflicts] = useState<string[]>([])
 
   const [formData, setFormData] = useState<BookingFormData>({
@@ -81,33 +81,21 @@ const BookingPage: React.FC = () => {
       setLoading(true)
       
       // Fetch rooms
-      const { data: roomsData, error: roomsError } = await supabase
-        .from('ruangan')
-        .select('*')
-        .eq('status', 'tersedia')
-        .order('nama_ruangan')
-
-      if (roomsError) throw roomsError
-      setRooms(roomsData || [])
+      const roomsResponse = await ruanganAPI.getAll()
+      const availableRooms = roomsResponse.data?.filter(room => room.status === 'tersedia') || []
+      setRooms(availableRooms)
 
       // Fetch vehicles
-      const { data: vehiclesData, error: vehiclesError } = await supabase
-        .from('kendaraan')
-        .select('*')
-        .eq('status', 'tersedia')
-        .order('jenis')
-
-      if (vehiclesError) throw vehiclesError
-      setVehicles(vehiclesData || [])
+      const vehiclesResponse = await kendaraanAPI.getAll()
+      const availableVehicles = vehiclesResponse.data?.filter(vehicle => vehicle.status === 'tersedia') || []
+      setVehicles(availableVehicles)
 
       // Fetch existing bookings
-      const { data: bookingsData, error: bookingsError } = await supabase
-        .from('peminjaman')
-        .select('*')
-        .in('status', ['diajukan', 'disetujui'])
-
-      if (bookingsError) throw bookingsError
-      setExistingBookings(bookingsData || [])
+      const bookingsResponse = await peminjamanAPI.getAll()
+      const activeBookings = bookingsResponse.data?.filter(booking => 
+        ['diajukan', 'disetujui'].includes(booking.status)
+      ) || []
+      setExistingBookings(activeBookings)
     } catch (error) {
       console.error('Error fetching data:', error)
       toast.error('Gagal memuat data')
@@ -201,51 +189,24 @@ const BookingPage: React.FC = () => {
     try {
       setSubmitting(true)
       
-      let fileUrl = null
-      
-      // Upload file if exists
-      if (formData.file_surat) {
-        const fileExt = formData.file_surat.name.split('.').pop()
-        const fileName = `${user.id}_${Date.now()}.${fileExt}`
-        
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from('documents')
-          .upload(fileName, formData.file_surat)
-
-        if (uploadError) throw uploadError
-        fileUrl = uploadData.path
+      // Create booking data
+      const bookingData = {
+        id_user: user!.id_user,
+        jenis_peminjaman: formData.jenis_peminjaman,
+        id_ruangan: formData.id_ruangan || undefined,
+        id_kendaraan: formData.id_kendaraan || undefined,
+        tanggal_mulai: formData.tanggal_mulai,
+        jam_mulai: formData.jam_mulai,
+        tanggal_selesai: formData.tanggal_selesai,
+        jam_selesai: formData.jam_selesai,
+        keperluan: formData.keperluan,
+        file_surat: formData.file_surat,
+        status: 'diajukan' as const
       }
 
-      // Generate QR Code data
-      const qrData = {
-        id_peminjaman: `temp_${Date.now()}`,
-        jenis: formData.jenis_peminjaman,
-        user_id: user.id,
-        tanggal: formData.tanggal_mulai,
-        waktu: `${formData.jam_mulai}-${formData.jam_selesai}`
-      }
-
-      // Insert booking
-      const { error } = await supabase
-        .from('peminjaman')
-        .insert({
-          id_user: user.id,
-          jenis_peminjaman: formData.jenis_peminjaman,
-          id_ruangan: formData.id_ruangan,
-          id_kendaraan: formData.id_kendaraan,
-          tanggal_mulai: formData.tanggal_mulai,
-          jam_mulai: formData.jam_mulai,
-          tanggal_selesai: formData.tanggal_selesai,
-          jam_selesai: formData.jam_selesai,
-          keperluan: formData.keperluan,
-          file_surat: fileUrl,
-          status: 'diajukan',
-          qr_code: JSON.stringify(qrData)
-        })
-        .select()
-        .single()
-
-      if (error) throw error
+      // Submit booking
+      const response = await peminjamanAPI.create(bookingData)
+      if (!response.data) throw new Error(response.message || 'Gagal membuat peminjaman')
 
       toast.success('Pengajuan peminjaman berhasil dikirim!')
       navigate('/dashboard')

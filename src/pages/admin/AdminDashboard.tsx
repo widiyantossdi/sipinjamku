@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { peminjamanAPI, ruanganAPI, kendaraanAPI, usersAPI, Booking } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
 import { 
   Users, 
@@ -26,24 +26,7 @@ interface DashboardStats {
   completedBookings: number
 }
 
-interface RecentBooking {
-  id: string
-  jenis_peminjaman: 'ruangan' | 'kendaraan'
-  tanggal_mulai: string
-  tanggal_selesai: string
-  status: string
-  created_at: string
-  users: {
-    name: string
-    email: string
-  }[]
-  ruangan?: {
-    nama: string
-  }[]
-  kendaraan?: {
-    nama: string
-  }[]
-}
+
 
 const AdminDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats>({
@@ -56,7 +39,7 @@ const AdminDashboard: React.FC = () => {
     rejectedBookings: 0,
     completedBookings: 0
   })
-  const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([])
+  const [recentBookings, setRecentBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -67,54 +50,39 @@ const AdminDashboard: React.FC = () => {
     try {
       setLoading(true)
       
-      // Fetch stats
-      const [usersResult, roomsResult, vehiclesResult, bookingsResult] = await Promise.all([
-        supabase.from('users').select('id', { count: 'exact' }),
-        supabase.from('ruangan').select('id', { count: 'exact' }),
-        supabase.from('kendaraan').select('id', { count: 'exact' }),
-        supabase.from('peminjaman').select('status', { count: 'exact' })
+      // Fetch all data
+      const [usersResponse, roomsResponse, vehiclesResponse, bookingsResponse] = await Promise.all([
+        usersAPI.getAll(),
+        ruanganAPI.getAll(),
+        kendaraanAPI.getAll(),
+        peminjamanAPI.getAll()
       ])
 
-      // Count bookings by status
-      const { data: bookingsByStatus } = await supabase
-        .from('peminjaman')
-        .select('status')
+      const users = usersResponse.data || []
+      const rooms = roomsResponse.data || []
+      const vehicles = vehiclesResponse.data || []
+      const allBookings = bookingsResponse.data || []
       
-      const statusCounts = bookingsByStatus?.reduce((acc, booking) => {
+      // Count bookings by status
+      const statusCounts = allBookings.reduce((acc, booking) => {
         acc[booking.status] = (acc[booking.status] || 0) + 1
         return acc
-      }, {} as Record<string, number>) || {}
+      }, {} as Record<string, number>)
 
       setStats({
-        totalUsers: usersResult.count || 0,
-        totalRooms: roomsResult.count || 0,
-        totalVehicles: vehiclesResult.count || 0,
-        totalBookings: bookingsResult.count || 0,
+        totalUsers: users.length,
+        totalRooms: rooms.length,
+        totalVehicles: vehicles.length,
+        totalBookings: allBookings.length,
         pendingBookings: statusCounts['diajukan'] || 0,
         approvedBookings: statusCounts['disetujui'] || 0,
         rejectedBookings: statusCounts['ditolak'] || 0,
         completedBookings: statusCounts['selesai'] || 0
       })
 
-      // Fetch recent bookings
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('peminjaman')
-        .select(`
-          id,
-          jenis_peminjaman,
-          tanggal_mulai,
-          tanggal_selesai,
-          status,
-          created_at,
-          users!inner(name, email),
-          ruangan(nama),
-          kendaraan(nama)
-        `)
-        .order('created_at', { ascending: false })
-        .limit(10)
-
-      if (bookingsError) throw bookingsError
-      setRecentBookings(bookings || [])
+      // Get recent bookings (first 10)
+      const recentBookings = allBookings.slice(0, 10)
+      setRecentBookings(recentBookings)
 
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
@@ -291,14 +259,14 @@ const AdminDashboard: React.FC = () => {
                   </thead>
                   <tbody className="bg-white divide-y divide-gray-200">
                     {recentBookings.map((booking) => (
-                      <tr key={booking.id} className="hover:bg-gray-50">
+                      <tr key={booking.id_peminjaman} className="hover:bg-gray-50">
                         <td className="px-6 py-4 whitespace-nowrap">
                           <div>
                             <div className="text-sm font-medium text-gray-900">
-                              {booking.users[0]?.name}
+                              User ID: {booking.id_user}
                             </div>
                             <div className="text-sm text-gray-500">
-                              {booking.users[0]?.email}
+                              -
                             </div>
                           </div>
                         </td>
@@ -311,8 +279,8 @@ const AdminDashboard: React.FC = () => {
                             )}
                             <span className="text-sm text-gray-900">
                               {booking.jenis_peminjaman === 'ruangan'
-                                ? booking.ruangan?.[0]?.nama
-                                : booking.kendaraan?.[0]?.nama
+                                ? `Ruangan ID: ${booking.id_ruangan}`
+                                : `Kendaraan ID: ${booking.id_kendaraan}`
                               }
                             </span>
                           </div>
@@ -328,7 +296,7 @@ const AdminDashboard: React.FC = () => {
                           </span>
                         </td>
                         <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                          {formatDate(booking.created_at)}
+                          {booking.created_at ? formatDate(booking.created_at) : 'Tanggal tidak tersedia'}
                         </td>
                       </tr>
                     ))}

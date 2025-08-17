@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useAuth } from '../../contexts/AuthContext'
-import { supabase } from '../../lib/supabase'
+import { peminjamanAPI, ruanganAPI, kendaraanAPI, Booking } from '../../lib/api'
 import { 
   Calendar, 
   Building, 
@@ -26,7 +26,7 @@ interface DashboardStats {
 }
 
 const DashboardPage: React.FC = () => {
-  const { user, userProfile } = useAuth()
+  const { user } = useAuth()
   const [stats, setStats] = useState<DashboardStats>({
     totalBookings: 0,
     pendingBookings: 0,
@@ -35,7 +35,7 @@ const DashboardPage: React.FC = () => {
     availableRooms: 0,
     availableVehicles: 0
   })
-  const [recentBookings, setRecentBookings] = useState<any[]>([])
+  const [recentBookings, setRecentBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
@@ -49,51 +49,34 @@ const DashboardPage: React.FC = () => {
       setLoading(true)
       
       // Fetch user's bookings
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('peminjaman')
-        .select(`
-          *,
-          ruangan(nama_ruangan, lokasi),
-          kendaraan(jenis, merk, plat_nomor)
-        `)
-        .eq('id_user', user!.id)
-        .order('created_at', { ascending: false })
-        .limit(5)
-
-      if (bookingsError) throw bookingsError
+      const bookingsResponse = await peminjamanAPI.getAll()
+      const userBookings = bookingsResponse.data?.filter(booking => booking.id_user === user!.id_user) || []
+      const recentBookings = userBookings.slice(0, 5)
 
       // Calculate stats from bookings
-      const totalBookings = bookings?.length || 0
-      const pendingBookings = bookings?.filter(b => b.status === 'diajukan').length || 0
-      const approvedBookings = bookings?.filter(b => b.status === 'disetujui').length || 0
-      const rejectedBookings = bookings?.filter(b => b.status === 'ditolak').length || 0
+      const totalBookings = userBookings.length
+      const pendingBookings = userBookings.filter(b => b.status === 'diajukan').length
+      const approvedBookings = userBookings.filter(b => b.status === 'disetujui').length
+      const rejectedBookings = userBookings.filter(b => b.status === 'ditolak').length
 
       // Fetch available rooms
-      const { data: rooms, error: roomsError } = await supabase
-        .from('ruangan')
-        .select('*')
-        .eq('status', 'tersedia')
-
-      if (roomsError) throw roomsError
+      const roomsResponse = await ruanganAPI.getAll()
+      const availableRooms = roomsResponse.data?.filter(room => room.status === 'tersedia') || []
 
       // Fetch available vehicles
-      const { data: vehicles, error: vehiclesError } = await supabase
-        .from('kendaraan')
-        .select('*')
-        .eq('status', 'tersedia')
-
-      if (vehiclesError) throw vehiclesError
+      const vehiclesResponse = await kendaraanAPI.getAll()
+      const availableVehicles = vehiclesResponse.data?.filter(vehicle => vehicle.status === 'tersedia') || []
 
       setStats({
         totalBookings,
         pendingBookings,
         approvedBookings,
         rejectedBookings,
-        availableRooms: rooms?.length || 0,
-        availableVehicles: vehicles?.length || 0
+        availableRooms: availableRooms.length,
+        availableVehicles: availableVehicles.length
       })
 
-      setRecentBookings(bookings || [])
+      setRecentBookings(recentBookings)
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
     } finally {
@@ -185,7 +168,7 @@ const DashboardPage: React.FC = () => {
         {/* Header */}
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-gray-900">
-            {getGreeting()}, {userProfile?.nama || 'User'}!
+            {getGreeting()}, {user?.nama || 'User'}!
           </h1>
           <p className="text-gray-600 mt-2">
             Selamat datang di dashboard sistem peminjaman UNUGHA Cilacap
@@ -265,8 +248,8 @@ const DashboardPage: React.FC = () => {
                         <div className="flex-1">
                           <h4 className="text-sm font-medium text-gray-900">
                             {booking.jenis_peminjaman === 'ruangan' 
-                              ? booking.ruangan?.nama_ruangan 
-                              : `${booking.kendaraan?.merk} (${booking.kendaraan?.plat_nomor})`
+                              ? `Ruangan ID: ${booking.id_ruangan}` 
+                              : `Kendaraan ID: ${booking.id_kendaraan}`
                             }
                           </h4>
                           <p className="text-xs text-gray-500 mt-1">

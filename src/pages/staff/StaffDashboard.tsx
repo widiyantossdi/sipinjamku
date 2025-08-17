@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { peminjamanAPI, Booking } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
 import { Calendar, MapPin, Car, Clock, CheckCircle, XCircle, AlertCircle, Users, TrendingUp } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -16,31 +16,11 @@ interface DashboardStats {
   vehicleBookings: number
 }
 
-interface RecentBooking {
-  id: string
-  jenis_booking: 'ruangan' | 'kendaraan'
-  tanggal_mulai: string
-  tanggal_selesai: string
-  keperluan: string
-  status: 'pending' | 'approved' | 'rejected' | 'completed'
-  created_at: string
-  users: {
-    nama: string
-    email: string
-  }
-  ruangan?: {
-    nama: string
-    lokasi: string
-  }
-  kendaraan?: {
-    nama: string
-    plat_nomor: string
-  }
-}
+
 
 const StaffDashboard: React.FC = () => {
   const [stats, setStats] = useState<DashboardStats | null>(null)
-  const [recentBookings, setRecentBookings] = useState<RecentBooking[]>([])
+  const [recentBookings, setRecentBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [actionLoading, setActionLoading] = useState<string | null>(null)
 
@@ -53,22 +33,19 @@ const StaffDashboard: React.FC = () => {
       setLoading(true)
       
       // Fetch all bookings for stats
-      const { data: allBookings, error: bookingsError } = await supabase
-        .from('peminjaman')
-        .select('*')
-
-      if (bookingsError) throw bookingsError
+      const bookingsResponse = await peminjamanAPI.getAll()
+      const allBookings = bookingsResponse.data || []
 
       // Calculate stats
       const today = new Date().toISOString().split('T')[0]
-      const totalBookings = allBookings?.length || 0
-      const pendingBookings = allBookings?.filter(b => b.status === 'pending').length || 0
-      const approvedBookings = allBookings?.filter(b => b.status === 'approved').length || 0
-      const todayBookings = allBookings?.filter(b => 
+      const totalBookings = allBookings.length
+      const pendingBookings = allBookings.filter(b => b.status === 'diajukan').length
+      const approvedBookings = allBookings.filter(b => b.status === 'disetujui').length
+      const todayBookings = allBookings.filter(b => 
         b.tanggal_mulai.startsWith(today) || b.tanggal_selesai.startsWith(today)
-      ).length || 0
-      const roomBookings = allBookings?.filter(b => b.jenis_booking === 'ruangan').length || 0
-      const vehicleBookings = allBookings?.filter(b => b.jenis_booking === 'kendaraan').length || 0
+      ).length
+      const roomBookings = allBookings.filter(b => b.jenis_peminjaman === 'ruangan').length
+      const vehicleBookings = allBookings.filter(b => b.jenis_peminjaman === 'kendaraan').length
 
       setStats({
         totalBookings,
@@ -79,29 +56,9 @@ const StaffDashboard: React.FC = () => {
         vehicleBookings
       })
 
-      // Fetch recent bookings with details
-      const { data: recentData, error: recentError } = await supabase
-        .from('peminjaman')
-        .select(`
-          *,
-          users:user_id (
-            nama,
-            email
-          ),
-          ruangan:ruangan_id (
-            nama,
-            lokasi
-          ),
-          kendaraan:kendaraan_id (
-            nama,
-            plat_nomor
-          )
-        `)
-        .order('created_at', { ascending: false })
-        .limit(10)
-
-      if (recentError) throw recentError
-      setRecentBookings(recentData || [])
+      // Get recent bookings (first 10)
+      const recentData = allBookings.slice(0, 10)
+      setRecentBookings(recentData)
     } catch (error) {
       console.error('Error fetching dashboard data:', error)
       toast.error('Gagal memuat data dashboard')
@@ -113,12 +70,9 @@ const StaffDashboard: React.FC = () => {
   const handleQuickAction = async (bookingId: string, action: 'approve' | 'reject') => {
     setActionLoading(bookingId)
     try {
-      const { error } = await supabase
-        .from('peminjaman')
-        .update({ status: action === 'approve' ? 'approved' : 'rejected' })
-        .eq('id', bookingId)
-
-      if (error) throw error
+      await peminjamanAPI.update(bookingId, {
+        status: action === 'approve' ? 'disetujui' : 'ditolak'
+      })
 
       toast.success(`Booking berhasil ${action === 'approve' ? 'disetujui' : 'ditolak'}`)
       fetchDashboardData()
@@ -332,11 +286,11 @@ const StaffDashboard: React.FC = () => {
           ) : (
             <div className="space-y-4">
               {recentBookings.map((booking) => (
-                <div key={booking.id} className="border border-gray-200 rounded-lg p-4">
+                <div key={booking.id_peminjaman} className="border border-gray-200 rounded-lg p-4">
                   <div className="flex items-start justify-between">
                     <div className="flex items-start gap-3 flex-1">
                       <div className="p-2 bg-primary-100 rounded-lg">
-                        {booking.jenis_booking === 'ruangan' ? (
+                        {booking.jenis_peminjaman === 'ruangan' ? (
                           <MapPin className="h-4 w-4 text-primary-600" />
                         ) : (
                           <Car className="h-4 w-4 text-primary-600" />
@@ -346,15 +300,15 @@ const StaffDashboard: React.FC = () => {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <h4 className="font-medium text-gray-900">
-                            {booking.jenis_booking === 'ruangan' 
-                              ? booking.ruangan?.nama 
-                              : booking.kendaraan?.nama
+                            {booking.jenis_peminjaman === 'ruangan' 
+                              ? `Ruangan ID: ${booking.id_ruangan}` 
+                              : `Kendaraan ID: ${booking.id_kendaraan}`
                             }
                           </h4>
                           <span className="text-sm text-gray-500">
-                            {booking.jenis_booking === 'ruangan' 
-                              ? booking.ruangan?.lokasi 
-                              : booking.kendaraan?.plat_nomor
+                            {booking.jenis_peminjaman === 'ruangan' 
+                              ? 'Ruangan' 
+                              : 'Kendaraan'
                             }
                           </span>
                         </div>
@@ -362,7 +316,7 @@ const StaffDashboard: React.FC = () => {
                         <div className="space-y-1 text-sm text-gray-600">
                           <div className="flex items-center gap-2">
                             <Users className="h-3 w-3" />
-                            <span>{booking.users?.nama}</span>
+                            <span>User ID: {booking.id_user}</span>
                           </div>
                           <div className="flex items-center gap-2">
                             <Calendar className="h-3 w-3" />
@@ -387,22 +341,22 @@ const StaffDashboard: React.FC = () => {
                         </span>
                       </div>
                       
-                      {booking.status === 'pending' && (
+                      {booking.status === 'diajukan' && (
                         <div className="flex gap-1 ml-2">
                           <button
-                            onClick={() => handleQuickAction(booking.id, 'approve')}
-                            disabled={actionLoading === booking.id}
+                            onClick={() => handleQuickAction(booking.id_peminjaman, 'approve')}
+                            disabled={actionLoading === booking.id_peminjaman}
                             className="btn btn-primary btn-xs"
                           >
-                            {actionLoading === booking.id ? (
+                            {actionLoading === booking.id_peminjaman ? (
                               <LoadingSpinner size="sm" />
                             ) : (
                               <CheckCircle className="h-3 w-3" />
                             )}
                           </button>
                           <button
-                            onClick={() => handleQuickAction(booking.id, 'reject')}
-                            disabled={actionLoading === booking.id}
+                            onClick={() => handleQuickAction(booking.id_peminjaman, 'reject')}
+                            disabled={actionLoading === booking.id_peminjaman}
                             className="btn btn-outline btn-xs text-red-600 border-red-300 hover:bg-red-50"
                           >
                             <XCircle className="h-3 w-3" />

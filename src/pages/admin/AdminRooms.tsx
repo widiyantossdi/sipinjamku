@@ -1,24 +1,24 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { ruanganAPI } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
 import { Plus, Edit, Trash2, MapPin, Users, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Room {
-  id: string
-  nama: string
+  id_ruangan: string
+  nama_ruangan: string
   lokasi: string
   kapasitas: number
-  fasilitas: string[]
+  fasilitas?: string
   status: 'tersedia' | 'tidak_tersedia' | 'maintenance'
-  created_at: string
+  created_at?: string
 }
 
 interface RoomFormData {
-  nama: string
+  nama_ruangan: string
   lokasi: string
   kapasitas: number
-  fasilitas: string
+  fasilitas?: string
   status: 'tersedia' | 'tidak_tersedia' | 'maintenance'
 }
 
@@ -30,7 +30,7 @@ const AdminRooms: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('')
   const [statusFilter, setStatusFilter] = useState<'all' | 'tersedia' | 'tidak_tersedia' | 'maintenance'>('all')
   const [formData, setFormData] = useState<RoomFormData>({
-    nama: '',
+    nama_ruangan: '',
     lokasi: '',
     kapasitas: 0,
     fasilitas: '',
@@ -45,13 +45,8 @@ const AdminRooms: React.FC = () => {
   const fetchRooms = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('ruangan')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setRooms(data || [])
+      const response = await ruanganAPI.getAll()
+      setRooms(response.data || [])
     } catch (error) {
       console.error('Error fetching rooms:', error)
       toast.error('Gagal memuat data ruangan')
@@ -65,40 +60,26 @@ const AdminRooms: React.FC = () => {
     setSubmitting(true)
 
     try {
-      const facilityArray = formData.fasilitas
-        .split(',')
-        .map(f => f.trim())
-        .filter(f => f.length > 0)
-
       const roomData = {
-        nama: formData.nama,
+        nama_ruangan: formData.nama_ruangan,
         lokasi: formData.lokasi,
         kapasitas: formData.kapasitas,
-        fasilitas: facilityArray,
+        fasilitas: formData.fasilitas,
         status: formData.status
       }
 
       if (editingRoom) {
-        const { error } = await supabase
-          .from('ruangan')
-          .update(roomData)
-          .eq('id', editingRoom.id)
-
-        if (error) throw error
+        await ruanganAPI.update(editingRoom.id_ruangan, roomData)
         toast.success('Ruangan berhasil diperbarui')
       } else {
-        const { error } = await supabase
-          .from('ruangan')
-          .insert([roomData])
-
-        if (error) throw error
+        await ruanganAPI.create(roomData)
         toast.success('Ruangan berhasil ditambahkan')
       }
 
       setShowModal(false)
       setEditingRoom(null)
       setFormData({
-        nama: '',
+        nama_ruangan: '',
         lokasi: '',
         kapasitas: 0,
         fasilitas: '',
@@ -116,27 +97,22 @@ const AdminRooms: React.FC = () => {
   const handleEdit = (room: Room) => {
     setEditingRoom(room)
     setFormData({
-      nama: room.nama,
+      nama_ruangan: room.nama_ruangan,
       lokasi: room.lokasi,
       kapasitas: room.kapasitas,
-      fasilitas: room.fasilitas.join(', '),
+      fasilitas: Array.isArray(room.fasilitas) ? room.fasilitas.join(', ') : room.fasilitas || '',
       status: room.status
     })
     setShowModal(true)
   }
 
   const handleDelete = async (room: Room) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus ruangan "${room.nama}"?`)) {
+    if (!confirm(`Apakah Anda yakin ingin menghapus ruangan "${room.nama_ruangan}"?`)) {
       return
     }
 
     try {
-      const { error } = await supabase
-        .from('ruangan')
-        .delete()
-        .eq('id', room.id)
-
-      if (error) throw error
+      await ruanganAPI.delete(room.id_ruangan)
       toast.success('Ruangan berhasil dihapus')
       fetchRooms()
     } catch (error) {
@@ -146,7 +122,7 @@ const AdminRooms: React.FC = () => {
   }
 
   const filteredRooms = rooms.filter(room => {
-    const matchesSearch = room.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = room.nama_ruangan.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          room.lokasi.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || room.status === statusFilter
     return matchesSearch && matchesStatus
@@ -190,7 +166,7 @@ const AdminRooms: React.FC = () => {
             onClick={() => {
               setEditingRoom(null)
               setFormData({
-                nama: '',
+                nama_ruangan: '',
                 lokasi: '',
                 kapasitas: 0,
                 fasilitas: '',
@@ -247,7 +223,7 @@ const AdminRooms: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredRooms.map((room) => (
-            <div key={room.id} className="card">
+            <div key={room.id_ruangan} className="card">
               <div className="card-content">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
@@ -255,7 +231,7 @@ const AdminRooms: React.FC = () => {
                       <MapPin className="h-5 w-5 text-primary-600" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">{room.nama}</h3>
+                      <h3 className="font-semibold text-gray-900">{room.nama_ruangan}</h3>
                       <p className="text-sm text-gray-600">{room.lokasi}</p>
                     </div>
                   </div>
@@ -272,11 +248,11 @@ const AdminRooms: React.FC = () => {
                     <span>Kapasitas: {room.kapasitas} orang</span>
                   </div>
 
-                  {room.fasilitas.length > 0 && (
+                  {room.fasilitas && (Array.isArray(room.fasilitas) ? room.fasilitas.length > 0 : room.fasilitas.split(',').length > 0) && (
                     <div>
                       <p className="text-sm font-medium text-gray-700 mb-1">Fasilitas:</p>
                       <div className="flex flex-wrap gap-1">
-                        {room.fasilitas.slice(0, 3).map((fasilitas, index) => (
+                        {room.fasilitas?.split(',').slice(0, 3).map((fasilitas: string, index: number) => (
                           <span
                             key={index}
                             className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded"
@@ -284,9 +260,9 @@ const AdminRooms: React.FC = () => {
                             {fasilitas}
                           </span>
                         ))}
-                        {room.fasilitas.length > 3 && (
+                        {room.fasilitas && room.fasilitas.split(',').length > 3 && (
                           <span className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded">
-                            +{room.fasilitas.length - 3} lainnya
+                            +{room.fasilitas.split(',').length - 3} lainnya
                           </span>
                         )}
                       </div>
@@ -330,8 +306,8 @@ const AdminRooms: React.FC = () => {
                 </label>
                 <input
                   type="text"
-                  value={formData.nama}
-                  onChange={(e) => setFormData(prev => ({ ...prev, nama: e.target.value }))}
+                  value={formData.nama_ruangan}
+                  onChange={(e) => setFormData(prev => ({ ...prev, nama_ruangan: e.target.value }))}
                   className="input"
                   placeholder="Masukkan nama ruangan"
                   required

@@ -31,11 +31,11 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({
   }
 
   // Check role-based access
-  if (requiredRole && user.user_metadata?.role !== requiredRole) {
+  if (requiredRole && user.role !== requiredRole) {
     return <Navigate to="/dashboard" replace />
   }
 
-  if (allowedRoles && !allowedRoles.includes(user.user_metadata?.role)) {
+  if (allowedRoles && !allowedRoles.includes(user.role)) {
     return <Navigate to="/dashboard" replace />
   }
 

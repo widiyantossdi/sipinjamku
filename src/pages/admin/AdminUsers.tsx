@@ -1,42 +1,36 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { usersAPI, User } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
-import { Plus, Edit, Trash2, Search, Users, Shield, User, Mail, Phone } from 'lucide-react'
+import { Plus, Edit, Trash2, Search, Users, Shield, User as UserIcon, Mail, Phone } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { id } from 'date-fns/locale'
 
-interface UserData {
-  id: string
-  email: string
-  nama: string
-  no_telepon?: string
-  role: 'admin' | 'staff' | 'user'
-  created_at: string
-  last_sign_in_at?: string
-}
-
 interface UserFormData {
-  email: string
   nama: string
-  no_telepon: string
-  role: 'admin' | 'staff' | 'user'
-  password: string
+  email: string
+  role: 'admin' | 'user'
+  no_telepon?: string
+  divisi?: string
+  password?: string
+  password_confirmation?: string
 }
 
 const AdminUsers: React.FC = () => {
-  const [users, setUsers] = useState<UserData[]>([])
+  const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
-  const [editingUser, setEditingUser] = useState<UserData | null>(null)
+  const [editingUser, setEditingUser] = useState<User | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
-  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'staff' | 'user'>('all')
+  const [roleFilter, setRoleFilter] = useState<'all' | 'admin' | 'user'>('all')
   const [formData, setFormData] = useState<UserFormData>({
-    email: '',
     nama: '',
-    no_telepon: '',
+    email: '',
     role: 'user',
-    password: ''
+    no_telepon: '',
+    divisi: '',
+    password: '',
+    password_confirmation: ''
   })
   const [submitting, setSubmitting] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
@@ -48,13 +42,8 @@ const AdminUsers: React.FC = () => {
   const fetchUsers = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setUsers(data || [])
+      const response = await usersAPI.getAll()
+      setUsers(response.data || [])
     } catch (error) {
       console.error('Error fetching users:', error)
       toast.error('Gagal memuat data pengguna')
@@ -70,23 +59,14 @@ const AdminUsers: React.FC = () => {
     try {
       if (editingUser) {
         // Update existing user
-        const updateData: any = {
+        const updateData = {
           nama: formData.nama,
-          no_telepon: formData.no_telepon || null,
+          email: formData.email,
+          no_telepon: formData.no_telepon || undefined,
           role: formData.role
         }
 
-        // Only update email if it's different
-        if (formData.email !== editingUser.email) {
-          updateData.email = formData.email
-        }
-
-        const { error } = await supabase
-          .from('users')
-          .update(updateData)
-          .eq('id', editingUser.id)
-
-        if (error) throw error
+        await usersAPI.update(editingUser.id_user, updateData)
         toast.success('Pengguna berhasil diperbarui')
       } else {
         // Create new user
@@ -95,30 +75,14 @@ const AdminUsers: React.FC = () => {
           return
         }
 
-        // First create auth user
-        const { data: authData, error: authError } = await supabase.auth.signUp({
+        await usersAPI.create({
+          nama: formData.nama,
           email: formData.email,
-          password: formData.password
+          no_telepon: formData.no_telepon || undefined,
+          role: formData.role,
+          password: formData.password,
+          password_confirmation: formData.password
         })
-
-        if (authError) throw authError
-
-        if (authData.user) {
-          // Then create user profile
-          const { error: profileError } = await supabase
-            .from('users')
-            .insert([
-              {
-                id: authData.user.id,
-                email: formData.email,
-                nama: formData.nama,
-                no_telepon: formData.no_telepon || null,
-                role: formData.role
-              }
-            ])
-
-          if (profileError) throw profileError
-        }
 
         toast.success('Pengguna berhasil ditambahkan')
       }
@@ -145,7 +109,7 @@ const AdminUsers: React.FC = () => {
     }
   }
 
-  const handleEdit = (user: UserData) => {
+  const handleEdit = (user: User) => {
     setEditingUser(user)
     setFormData({
       email: user.email,
@@ -157,19 +121,13 @@ const AdminUsers: React.FC = () => {
     setShowModal(true)
   }
 
-  const handleDelete = async (user: UserData) => {
+  const handleDelete = async (user: User) => {
     if (!confirm(`Apakah Anda yakin ingin menghapus pengguna "${user.nama}"?`)) {
       return
     }
 
     try {
-      // Delete from users table (auth user will be handled by RLS)
-      const { error } = await supabase
-        .from('users')
-        .delete()
-        .eq('id', user.id)
-
-      if (error) throw error
+      await usersAPI.delete(user.id_user)
       toast.success('Pengguna berhasil dihapus')
       fetchUsers()
     } catch (error) {
@@ -211,8 +169,8 @@ const AdminUsers: React.FC = () => {
     switch (role) {
       case 'admin': return <Shield className="h-4 w-4" />
       case 'staff': return <Users className="h-4 w-4" />
-      case 'user': return <User className="h-4 w-4" />
-      default: return <User className="h-4 w-4" />
+      case 'user': return <UserIcon className="h-4 w-4" />
+      default: return <UserIcon className="h-4 w-4" />
     }
   }
 
@@ -293,7 +251,7 @@ const AdminUsers: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {filteredUsers.map((user) => (
-            <div key={user.id} className="card">
+            <div key={user.id_user} className="card">
               <div className="card-content">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-4">
@@ -324,11 +282,8 @@ const AdminUsers: React.FC = () => {
                           </div>
                         )}
                         <p className="text-xs text-gray-500">
-                          Bergabung: {format(new Date(user.created_at), 'dd MMM yyyy', { locale: id })}
-                          {user.last_sign_in_at && (
-                            <span className="ml-2">
-                              • Login terakhir: {format(new Date(user.last_sign_in_at), 'dd MMM yyyy', { locale: id })}
-                            </span>
+                          {user.created_at && (
+                            <>Bergabung: {format(new Date(user.created_at), 'dd MMM yyyy', { locale: id })}</>
                           )}
                         </p>
                       </div>

@@ -11,8 +11,9 @@ const RegisterPage: React.FC = () => {
     email: '',
     password: '',
     confirmPassword: '',
-    role: 'mahasiswa' as 'mahasiswa' | 'dosen',
-    no_hp: ''
+    role: 'user' as 'admin' | 'user',
+    no_telepon: '',
+    divisi: ''
   })
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
@@ -49,10 +50,10 @@ const RegisterPage: React.FC = () => {
       newErrors.confirmPassword = 'Password tidak cocok'
     }
 
-    if (!formData.no_hp.trim()) {
-      newErrors.no_hp = 'Nomor HP harus diisi'
-    } else if (!/^(\+62|62|0)[0-9]{9,13}$/.test(formData.no_hp.replace(/[\s-]/g, ''))) {
-      newErrors.no_hp = 'Format nomor HP tidak valid'
+    if (!formData.no_telepon.trim()) {
+      newErrors.no_telepon = 'Nomor telepon harus diisi'
+    } else if (!/^(\+62|62|0)[0-9]{9,13}$/.test(formData.no_telepon.replace(/[\s-]/g, ''))) {
+      newErrors.no_telepon = 'Format nomor telepon tidak valid'
     }
 
     setErrors(newErrors)
@@ -68,10 +69,14 @@ const RegisterPage: React.FC = () => {
 
     setIsLoading(true)
     try {
-      await signUp(formData.email, formData.password, {
+      await signUp({
         nama: formData.nama.trim(),
+        email: formData.email,
+        password: formData.password,
+        password_confirmation: formData.confirmPassword,
         role: formData.role,
-        no_hp: formData.no_hp.replace(/[\s-]/g, '')
+        no_telepon: formData.no_telepon.replace(/[\s-]/g, ''),
+        divisi: formData.divisi.trim() || undefined
       })
       
       toast.success('Akun berhasil dibuat! Silakan cek email untuk verifikasi.')
@@ -181,35 +186,56 @@ const RegisterPage: React.FC = () => {
                 onChange={handleChange}
                 className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
               >
-                <option value="mahasiswa">Mahasiswa</option>
-                <option value="dosen">Dosen</option>
+                <option value="user">User</option>
+                <option value="admin">Admin</option>
               </select>
             </div>
 
-            {/* No HP */}
+            {/* Divisi */}
             <div>
-              <label htmlFor="no_hp" className="block text-sm font-medium text-gray-700 mb-1">
-                Nomor HP
+              <label htmlFor="divisi" className="block text-sm font-medium text-gray-700 mb-1">
+                Divisi (Opsional)
+              </label>
+              <div className="relative">
+                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                  <Building className="h-5 w-5 text-gray-400" />
+                </div>
+                <input
+                  id="divisi"
+                  name="divisi"
+                  type="text"
+                  value={formData.divisi}
+                  onChange={handleChange}
+                  className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  placeholder="Masukkan divisi/bagian"
+                />
+              </div>
+            </div>
+
+            {/* No Telepon */}
+            <div>
+              <label htmlFor="no_telepon" className="block text-sm font-medium text-gray-700 mb-1">
+                Nomor Telepon
               </label>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <Phone className="h-5 w-5 text-gray-400" />
                 </div>
                 <input
-                  id="no_hp"
-                  name="no_hp"
+                  id="no_telepon"
+                  name="no_telepon"
                   type="tel"
                   autoComplete="tel"
-                  value={formData.no_hp}
+                  value={formData.no_telepon}
                   onChange={handleChange}
                   className={`block w-full pl-10 pr-3 py-2 border rounded-md shadow-sm placeholder-gray-400 focus:outline-none focus:ring-primary-500 focus:border-primary-500 ${
-                    errors.no_hp ? 'border-red-300' : 'border-gray-300'
+                    errors.no_telepon ? 'border-red-300' : 'border-gray-300'
                   }`}
                   placeholder="08xxxxxxxxxx"
                 />
               </div>
-              {errors.no_hp && (
-                <p className="mt-1 text-sm text-red-600">{errors.no_hp}</p>
+              {errors.no_telepon && (
+                <p className="mt-1 text-sm text-red-600">{errors.no_telepon}</p>
               )}
             </div>
 

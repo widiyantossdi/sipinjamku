@@ -1,42 +1,18 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { peminjamanAPI, Booking } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
 import { Search, Calendar, MapPin, Car, Users, Clock, CheckCircle, XCircle, AlertCircle } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { format } from 'date-fns'
 import { id } from 'date-fns/locale'
 
-interface Booking {
-  id: string
-  user_id: string
-  jenis_booking: 'ruangan' | 'kendaraan'
-  ruangan_id?: string
-  kendaraan_id?: string
-  tanggal_mulai: string
-  tanggal_selesai: string
-  keperluan: string
-  status: 'pending' | 'approved' | 'rejected' | 'completed'
-  catatan_admin?: string
-  created_at: string
-  users: {
-    nama: string
-    email: string
-  }
-  ruangan?: {
-    nama: string
-    lokasi: string
-  }
-  kendaraan?: {
-    nama: string
-    plat_nomor: string
-  }
-}
+
 
 const AdminBookings: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([])
   const [loading, setLoading] = useState(true)
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected' | 'completed'>('all')
+  const [statusFilter, setStatusFilter] = useState<'all' | 'diajukan' | 'disetujui' | 'ditolak' | 'selesai'>('all')
   const [typeFilter, setTypeFilter] = useState<'all' | 'ruangan' | 'kendaraan'>('all')
   const [selectedBooking, setSelectedBooking] = useState<Booking | null>(null)
   const [showDetailModal, setShowDetailModal] = useState(false)
@@ -50,27 +26,8 @@ const AdminBookings: React.FC = () => {
   const fetchBookings = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('peminjaman')
-        .select(`
-          *,
-          users:user_id (
-            nama,
-            email
-          ),
-          ruangan:ruangan_id (
-            nama,
-            lokasi
-          ),
-          kendaraan:kendaraan_id (
-            nama,
-            plat_nomor
-          )
-        `)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setBookings(data || [])
+      const response = await peminjamanAPI.getAll()
+      setBookings(response.data || [])
     } catch (error) {
       console.error('Error fetching bookings:', error)
       toast.error('Gagal memuat data booking')
@@ -79,7 +36,7 @@ const AdminBookings: React.FC = () => {
     }
   }
 
-  const handleStatusUpdate = async (bookingId: string, newStatus: 'approved' | 'rejected', note?: string) => {
+  const handleStatusUpdate = async (bookingId: string, newStatus: 'disetujui' | 'ditolak', note?: string) => {
     setActionLoading(bookingId)
     try {
       const updateData: any = { status: newStatus }
@@ -87,14 +44,9 @@ const AdminBookings: React.FC = () => {
         updateData.catatan_admin = note
       }
 
-      const { error } = await supabase
-        .from('peminjaman')
-        .update(updateData)
-        .eq('id', bookingId)
+      await peminjamanAPI.update(bookingId, updateData)
 
-      if (error) throw error
-
-      toast.success(`Booking berhasil ${newStatus === 'approved' ? 'disetujui' : 'ditolak'}`)
+      toast.success(`Booking berhasil ${newStatus === 'disetujui' ? 'disetujui' : 'ditolak'}`)
       fetchBookings()
       setShowDetailModal(false)
       setAdminNote('')
@@ -109,12 +61,7 @@ const AdminBookings: React.FC = () => {
   const handleCompleteBooking = async (bookingId: string) => {
     setActionLoading(bookingId)
     try {
-      const { error } = await supabase
-        .from('peminjaman')
-        .update({ status: 'completed' })
-        .eq('id', bookingId)
-
-      if (error) throw error
+      await peminjamanAPI.update(bookingId, { status: 'selesai' })
 
       toast.success('Booking berhasil diselesaikan')
       fetchBookings()
@@ -128,44 +75,41 @@ const AdminBookings: React.FC = () => {
 
   const filteredBookings = bookings.filter(booking => {
     const matchesSearch = 
-      booking.users?.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.users?.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      booking.keperluan.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (booking.ruangan?.nama || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (booking.kendaraan?.nama || '').toLowerCase().includes(searchTerm.toLowerCase())
+      booking.keperluan.toLowerCase().includes(searchTerm.toLowerCase())
     
     const matchesStatus = statusFilter === 'all' || booking.status === statusFilter
-    const matchesType = typeFilter === 'all' || booking.jenis_booking === typeFilter
+    const bookingType = booking.id_ruangan ? 'ruangan' : 'kendaraan'
+    const matchesType = typeFilter === 'all' || bookingType === typeFilter
     
     return matchesSearch && matchesStatus && matchesType
   })
 
   const getStatusColor = (status: string) => {
     switch (status) {
-      case 'pending': return 'bg-yellow-100 text-yellow-800'
-      case 'approved': return 'bg-green-100 text-green-800'
-      case 'rejected': return 'bg-red-100 text-red-800'
-      case 'completed': return 'bg-blue-100 text-blue-800'
+      case 'diajukan': return 'bg-yellow-100 text-yellow-800'
+      case 'disetujui': return 'bg-green-100 text-green-800'
+      case 'ditolak': return 'bg-red-100 text-red-800'
+      case 'selesai': return 'bg-blue-100 text-blue-800'
       default: return 'bg-gray-100 text-gray-800'
     }
   }
 
   const getStatusText = (status: string) => {
     switch (status) {
-      case 'pending': return 'Menunggu'
-      case 'approved': return 'Disetujui'
-      case 'rejected': return 'Ditolak'
-      case 'completed': return 'Selesai'
+      case 'diajukan': return 'Menunggu'
+      case 'disetujui': return 'Disetujui'
+      case 'ditolak': return 'Ditolak'
+      case 'selesai': return 'Selesai'
       default: return status
     }
   }
 
   const getStatusIcon = (status: string) => {
     switch (status) {
-      case 'pending': return <Clock className="h-4 w-4" />
-      case 'approved': return <CheckCircle className="h-4 w-4" />
-      case 'rejected': return <XCircle className="h-4 w-4" />
-      case 'completed': return <CheckCircle className="h-4 w-4" />
+      case 'diajukan': return <Clock className="h-4 w-4" />
+      case 'disetujui': return <CheckCircle className="h-4 w-4" />
+      case 'ditolak': return <XCircle className="h-4 w-4" />
+      case 'selesai': return <CheckCircle className="h-4 w-4" />
       default: return <AlertCircle className="h-4 w-4" />
     }
   }
@@ -216,10 +160,10 @@ const AdminBookings: React.FC = () => {
           className="input w-full sm:w-auto"
         >
           <option value="all">Semua Status</option>
-          <option value="pending">Menunggu</option>
-          <option value="approved">Disetujui</option>
-          <option value="rejected">Ditolak</option>
-          <option value="completed">Selesai</option>
+          <option value="diajukan">Menunggu</option>
+          <option value="disetujui">Disetujui</option>
+          <option value="ditolak">Ditolak</option>
+          <option value="selesai">Selesai</option>
         </select>
       </div>
 
@@ -240,12 +184,12 @@ const AdminBookings: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {filteredBookings.map((booking) => (
-            <div key={booking.id} className="card">
+            <div key={booking.id_peminjaman} className="card">
               <div className="card-content">
                 <div className="flex items-start justify-between">
                   <div className="flex items-start gap-4 flex-1">
                     <div className="p-2 bg-primary-100 rounded-lg">
-                      {booking.jenis_booking === 'ruangan' ? (
+                      {booking.id_ruangan ? (
                         <MapPin className="h-5 w-5 text-primary-600" />
                       ) : (
                         <Car className="h-5 w-5 text-primary-600" />
@@ -255,15 +199,15 @@ const AdminBookings: React.FC = () => {
                     <div className="flex-1">
                       <div className="flex items-center gap-2 mb-2">
                         <h3 className="font-semibold text-gray-900">
-                          {booking.jenis_booking === 'ruangan' 
-                            ? booking.ruangan?.nama 
-                            : booking.kendaraan?.nama
+                          {booking.id_ruangan 
+                            ? `Ruangan ID: ${booking.id_ruangan}` 
+                            : `Kendaraan ID: ${booking.id_kendaraan}`
                           }
                         </h3>
                         <span className="text-sm text-gray-500">
-                          {booking.jenis_booking === 'ruangan' 
-                            ? booking.ruangan?.lokasi 
-                            : booking.kendaraan?.plat_nomor
+                          {booking.id_ruangan 
+                            ? 'Ruangan' 
+                            : 'Kendaraan'
                           }
                         </span>
                       </div>
@@ -271,7 +215,7 @@ const AdminBookings: React.FC = () => {
                       <div className="space-y-1 text-sm text-gray-600">
                         <div className="flex items-center gap-2">
                           <Users className="h-4 w-4" />
-                          <span>{booking.users?.nama} ({booking.users?.email})</span>
+                          <span>User ID: {booking.id_user}</span>
                         </div>
                         <div className="flex items-center gap-2">
                           <Calendar className="h-4 w-4" />
@@ -308,14 +252,13 @@ const AdminBookings: React.FC = () => {
                   </div>
                 </div>
                 
-                {booking.status === 'pending' && (
+                {booking.status === 'diajukan' && (
                   <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200">
                     <button
-                      onClick={() => handleStatusUpdate(booking.id, 'approved')}
-                      disabled={actionLoading === booking.id}
-                      className="btn btn-primary btn-sm"
-                    >
-                      {actionLoading === booking.id ? (
+                      onClick={() => handleStatusUpdate(booking.id_peminjaman, 'disetujui')}
+                      disabled={actionLoading === booking.id_peminjaman}
+                      className="btn btn-primary btn-sm">
+                      {actionLoading === booking.id_peminjaman ? (
                         <LoadingSpinner size="sm" />
                       ) : (
                         <>
@@ -337,14 +280,14 @@ const AdminBookings: React.FC = () => {
                   </div>
                 )}
                 
-                {booking.status === 'approved' && (
+                {booking.status === 'disetujui' && (
                   <div className="flex gap-2 mt-4 pt-4 border-t border-gray-200">
                     <button
-                      onClick={() => handleCompleteBooking(booking.id)}
-                      disabled={actionLoading === booking.id}
+                      onClick={() => handleCompleteBooking(booking.id_peminjaman)}
+                      disabled={actionLoading === booking.id_peminjaman}
                       className="btn btn-primary btn-sm"
                     >
-                      {actionLoading === booking.id ? (
+                      {actionLoading === booking.id_peminjaman ? (
                         <LoadingSpinner size="sm" />
                       ) : (
                         <>
@@ -373,17 +316,17 @@ const AdminBookings: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Jenis Booking
                   </label>
-                  <p className="text-gray-900 capitalize">{selectedBooking.jenis_booking}</p>
+                  <p className="text-gray-900 capitalize">{selectedBooking.id_ruangan ? 'Ruangan' : 'Kendaraan'}</p>
                 </div>
                 
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
-                    {selectedBooking.jenis_booking === 'ruangan' ? 'Ruangan' : 'Kendaraan'}
+                    {selectedBooking.id_ruangan ? 'Ruangan' : 'Kendaraan'}
                   </label>
                   <p className="text-gray-900">
-                    {selectedBooking.jenis_booking === 'ruangan' 
-                      ? `${selectedBooking.ruangan?.nama} - ${selectedBooking.ruangan?.lokasi}`
-                      : `${selectedBooking.kendaraan?.nama} (${selectedBooking.kendaraan?.plat_nomor})`
+                    {selectedBooking.id_ruangan 
+                      ? `Ruangan ID: ${selectedBooking.id_ruangan}`
+                      : `Kendaraan ID: ${selectedBooking.id_kendaraan}`
                     }
                   </p>
                 </div>
@@ -392,8 +335,8 @@ const AdminBookings: React.FC = () => {
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Pemohon
                   </label>
-                  <p className="text-gray-900">{selectedBooking.users?.nama}</p>
-                  <p className="text-sm text-gray-600">{selectedBooking.users?.email}</p>
+                  <p className="text-gray-900">User ID: {selectedBooking.id_user}</p>
+                  <p className="text-sm text-gray-600">-</p>
                 </div>
                 
                 <div>
@@ -427,16 +370,9 @@ const AdminBookings: React.FC = () => {
                 <p className="text-gray-900">{selectedBooking.keperluan}</p>
               </div>
               
-              {selectedBooking.catatan_admin && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">
-                    Catatan Admin
-                  </label>
-                  <p className="text-gray-900">{selectedBooking.catatan_admin}</p>
-                </div>
-              )}
+
               
-              {selectedBooking.status === 'pending' && (
+              {selectedBooking.status === 'diajukan' && (
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">
                     Catatan (Opsional)
@@ -463,25 +399,25 @@ const AdminBookings: React.FC = () => {
                 Tutup
               </button>
               
-              {selectedBooking.status === 'pending' && (
+              {selectedBooking.status === 'diajukan' && (
                 <>
                   <button
-                    onClick={() => handleStatusUpdate(selectedBooking.id, 'rejected', adminNote)}
-                    disabled={actionLoading === selectedBooking.id}
+                    onClick={() => handleStatusUpdate(selectedBooking.id_peminjaman, 'ditolak', adminNote)}
+                    disabled={actionLoading === selectedBooking.id_peminjaman}
                     className="btn btn-outline text-red-600 border-red-300 hover:bg-red-50"
                   >
-                    {actionLoading === selectedBooking.id ? (
+                    {actionLoading === selectedBooking.id_peminjaman ? (
                       <LoadingSpinner size="sm" />
                     ) : (
                       'Tolak'
                     )}
                   </button>
                   <button
-                    onClick={() => handleStatusUpdate(selectedBooking.id, 'approved', adminNote)}
-                    disabled={actionLoading === selectedBooking.id}
+                    onClick={() => handleStatusUpdate(selectedBooking.id_peminjaman, 'disetujui', adminNote)}
+                    disabled={actionLoading === selectedBooking.id_peminjaman}
                     className="btn btn-primary"
                   >
-                    {actionLoading === selectedBooking.id ? (
+                    {actionLoading === selectedBooking.id_peminjaman ? (
                       <LoadingSpinner size="sm" />
                     ) : (
                       'Setujui'

@@ -20,7 +20,7 @@ import {
 const Header: React.FC = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false)
   const [isUserMenuOpen, setIsUserMenuOpen] = useState(false)
-  const { user, userProfile, signOut } = useAuth()
+  const { user, signOut } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
 
@@ -69,10 +69,8 @@ const Header: React.FC = () => {
     
     let items = [...publicNavItems, ...userNavItems]
     
-    if (userProfile?.role === 'admin') {
+    if (user?.role === 'admin') {
       items = [...items, ...adminNavItems, ...staffNavItems]
-    } else if (userProfile?.role === 'petugas') {
-      items = [...items, ...staffNavItems]
     }
     
     return items
@@ -128,7 +126,7 @@ const Header: React.FC = () => {
                     <User className="w-4 h-4 text-primary-600" />
                   </div>
                   <span className="hidden sm:block text-sm font-medium">
-                    {userProfile?.nama || 'User'}
+                    {user?.nama || 'User'}
                   </span>
                 </button>
 

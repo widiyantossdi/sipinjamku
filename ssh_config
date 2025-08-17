@@ -1,0 +1,32 @@
+# SSH Configuration for Backend Server (aaPanel Ubuntu)
+# Usage: ssh -F ssh_config <alias>
+
+# Main server connection (root access)
+Host backend-server
+    HostName 202.152.157.53
+    Port 2227
+    User ssdi
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+# aaPanel user connection
+Host backend-aapanel
+    HostName 202.152.157.53
+    Port 2227
+    User ssdi
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+
+# Quick alias for backend
+Host backend
+    HostName 202.152.157.53
+    Port 2227
+    User ssdi
+    ServerAliveInterval 60
+    ServerAliveCountMax 3
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null

@@ -1,26 +1,24 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { kendaraanAPI } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
-import { Plus, Edit, Trash2, Car, Search, Fuel, Users } from 'lucide-react'
+import { Plus, Edit, Trash2, Car, Search, Users } from 'lucide-react'
 import toast from 'react-hot-toast'
 
 interface Vehicle {
-  id: string
-  nama: string
-  jenis: 'mobil' | 'motor' | 'bus' | 'truk'
+  id_kendaraan: string
+  jenis: string
+  merk: string
   plat_nomor: string
-  kapasitas: number
-  bahan_bakar: string
+  kapasitas_penumpang: number
   status: 'tersedia' | 'tidak_tersedia' | 'maintenance'
-  created_at: string
+  created_at?: string
 }
 
 interface VehicleFormData {
-  nama: string
-  jenis: 'mobil' | 'motor' | 'bus' | 'truk'
+  jenis: string
+  merk: string
   plat_nomor: string
-  kapasitas: number
-  bahan_bakar: string
+  kapasitas_penumpang: number
   status: 'tersedia' | 'tidak_tersedia' | 'maintenance'
 }
 
@@ -33,11 +31,10 @@ const AdminVehicles: React.FC = () => {
   const [statusFilter, setStatusFilter] = useState<'all' | 'tersedia' | 'tidak_tersedia' | 'maintenance'>('all')
   const [typeFilter, setTypeFilter] = useState<'all' | 'mobil' | 'motor' | 'bus' | 'truk'>('all')
   const [formData, setFormData] = useState<VehicleFormData>({
-    nama: '',
-    jenis: 'mobil',
+    jenis: '',
+    merk: '',
     plat_nomor: '',
-    kapasitas: 0,
-    bahan_bakar: '',
+    kapasitas_penumpang: 0,
     status: 'tersedia'
   })
   const [submitting, setSubmitting] = useState(false)
@@ -49,13 +46,8 @@ const AdminVehicles: React.FC = () => {
   const fetchVehicles = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('kendaraan')
-        .select('*')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setVehicles(data || [])
+      const response = await kendaraanAPI.getAll()
+      setVehicles(response.data || [])
     } catch (error) {
       console.error('Error fetching vehicles:', error)
       toast.error('Gagal memuat data kendaraan')
@@ -70,39 +62,28 @@ const AdminVehicles: React.FC = () => {
 
     try {
       const vehicleData = {
-        nama: formData.nama,
         jenis: formData.jenis,
+        merk: formData.merk,
         plat_nomor: formData.plat_nomor.toUpperCase(),
-        kapasitas: formData.kapasitas,
-        bahan_bakar: formData.bahan_bakar,
+        kapasitas_penumpang: parseInt(formData.kapasitas_penumpang.toString()),
         status: formData.status
       }
 
       if (editingVehicle) {
-        const { error } = await supabase
-          .from('kendaraan')
-          .update(vehicleData)
-          .eq('id', editingVehicle.id)
-
-        if (error) throw error
+        await kendaraanAPI.update(editingVehicle.id_kendaraan, vehicleData)
         toast.success('Kendaraan berhasil diperbarui')
       } else {
-        const { error } = await supabase
-          .from('kendaraan')
-          .insert([vehicleData])
-
-        if (error) throw error
+        await kendaraanAPI.create(vehicleData)
         toast.success('Kendaraan berhasil ditambahkan')
       }
 
       setShowModal(false)
       setEditingVehicle(null)
       setFormData({
-        nama: '',
-        jenis: 'mobil',
+        jenis: '',
+        merk: '',
         plat_nomor: '',
-        kapasitas: 0,
-        bahan_bakar: '',
+        kapasitas_penumpang: 0,
         status: 'tersedia'
       })
       fetchVehicles()
@@ -117,28 +98,22 @@ const AdminVehicles: React.FC = () => {
   const handleEdit = (vehicle: Vehicle) => {
     setEditingVehicle(vehicle)
     setFormData({
-      nama: vehicle.nama,
       jenis: vehicle.jenis,
+      merk: vehicle.merk,
       plat_nomor: vehicle.plat_nomor,
-      kapasitas: vehicle.kapasitas,
-      bahan_bakar: vehicle.bahan_bakar,
+      kapasitas_penumpang: vehicle.kapasitas_penumpang,
       status: vehicle.status
     })
     setShowModal(true)
   }
 
   const handleDelete = async (vehicle: Vehicle) => {
-    if (!confirm(`Apakah Anda yakin ingin menghapus kendaraan "${vehicle.nama}"?`)) {
+    if (!confirm(`Apakah Anda yakin ingin menghapus kendaraan "${vehicle.merk}"?`)) {
       return
     }
 
     try {
-      const { error } = await supabase
-        .from('kendaraan')
-        .delete()
-        .eq('id', vehicle.id)
-
-      if (error) throw error
+      await kendaraanAPI.delete(vehicle.id_kendaraan)
       toast.success('Kendaraan berhasil dihapus')
       fetchVehicles()
     } catch (error) {
@@ -148,7 +123,7 @@ const AdminVehicles: React.FC = () => {
   }
 
   const filteredVehicles = vehicles.filter(vehicle => {
-    const matchesSearch = vehicle.nama.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    const matchesSearch = vehicle.merk.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          vehicle.plat_nomor.toLowerCase().includes(searchTerm.toLowerCase())
     const matchesStatus = statusFilter === 'all' || vehicle.status === statusFilter
     const matchesType = typeFilter === 'all' || vehicle.jenis === typeFilter
@@ -173,19 +148,7 @@ const AdminVehicles: React.FC = () => {
     }
   }
 
-  const getTypeText = (type: string) => {
-    switch (type) {
-      case 'mobil': return 'Mobil'
-      case 'motor': return 'Motor'
-      case 'bus': return 'Bus'
-      case 'truk': return 'Truk'
-      default: return type
-    }
-  }
 
-  const getTypeIcon = () => {
-    return <Car className="h-5 w-5" />
-  }
 
   if (loading) {
     return (
@@ -207,11 +170,10 @@ const AdminVehicles: React.FC = () => {
             onClick={() => {
               setEditingVehicle(null)
               setFormData({
-                nama: '',
-                jenis: 'mobil',
+                jenis: '',
+                merk: '',
                 plat_nomor: '',
-                kapasitas: 0,
-                bahan_bakar: '',
+                kapasitas_penumpang: 0,
                 status: 'tersedia'
               })
               setShowModal(true)
@@ -276,15 +238,15 @@ const AdminVehicles: React.FC = () => {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredVehicles.map((vehicle) => (
-            <div key={vehicle.id} className="card">
+            <div key={vehicle.id_kendaraan} className="card">
               <div className="card-content">
                 <div className="flex items-start justify-between mb-4">
                   <div className="flex items-center gap-3">
                     <div className="p-2 bg-primary-100 rounded-lg">
-                      {getTypeIcon()}
+                      <Car className="h-5 w-5 text-primary-600" />
                     </div>
                     <div>
-                      <h3 className="font-semibold text-gray-900">{vehicle.nama}</h3>
+                      <h3 className="font-semibold text-gray-900">{vehicle.merk}</h3>
                       <p className="text-sm text-gray-600">{vehicle.plat_nomor}</p>
                     </div>
                   </div>
@@ -298,17 +260,12 @@ const AdminVehicles: React.FC = () => {
                 <div className="space-y-3">
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">Jenis:</span>
-                    <span className="font-medium text-gray-900">{getTypeText(vehicle.jenis)}</span>
+                    <span className="font-medium text-gray-900">{vehicle.jenis}</span>
                   </div>
 
                   <div className="flex items-center gap-2 text-sm text-gray-600">
                     <Users className="h-4 w-4" />
-                    <span>Kapasitas: {vehicle.kapasitas} orang</span>
-                  </div>
-
-                  <div className="flex items-center gap-2 text-sm text-gray-600">
-                    <Fuel className="h-4 w-4" />
-                    <span>Bahan Bakar: {vehicle.bahan_bakar}</span>
+                    <span>Kapasitas: {vehicle.kapasitas_penumpang} orang</span>
                   </div>
                 </div>
 
@@ -344,14 +301,14 @@ const AdminVehicles: React.FC = () => {
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Nama Kendaraan
+                  Merk Kendaraan
                 </label>
                 <input
                   type="text"
-                  value={formData.nama}
-                  onChange={(e) => setFormData(prev => ({ ...prev, nama: e.target.value }))}
+                  value={formData.merk}
+                  onChange={(e) => setFormData(prev => ({ ...prev, merk: e.target.value }))}
                   className="input"
-                  placeholder="Masukkan nama kendaraan"
+                  placeholder="Masukkan merk kendaraan"
                   required
                 />
               </div>
@@ -360,17 +317,14 @@ const AdminVehicles: React.FC = () => {
                 <label className="block text-sm font-medium text-gray-700 mb-1">
                   Jenis Kendaraan
                 </label>
-                <select
+                <input
+                  type="text"
                   value={formData.jenis}
-                  onChange={(e) => setFormData(prev => ({ ...prev, jenis: e.target.value as any }))}
+                  onChange={(e) => setFormData(prev => ({ ...prev, jenis: e.target.value }))}
                   className="input"
+                  placeholder="Contoh: Mobil, Motor, Bus, Truk"
                   required
-                >
-                  <option value="mobil">Mobil</option>
-                  <option value="motor">Motor</option>
-                  <option value="bus">Bus</option>
-                  <option value="truk">Truk</option>
-                </select>
+                />
               </div>
 
               <div>
@@ -389,29 +343,15 @@ const AdminVehicles: React.FC = () => {
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Kapasitas
+                  Kapasitas Penumpang
                 </label>
                 <input
                   type="number"
-                  value={formData.kapasitas}
-                  onChange={(e) => setFormData(prev => ({ ...prev, kapasitas: parseInt(e.target.value) || 0 }))}
+                  value={formData.kapasitas_penumpang}
+                  onChange={(e) => setFormData(prev => ({ ...prev, kapasitas_penumpang: parseInt(e.target.value) || 0 }))}
                   className="input"
-                  placeholder="Masukkan kapasitas"
+                  placeholder="Masukkan kapasitas penumpang"
                   min="1"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">
-                  Bahan Bakar
-                </label>
-                <input
-                  type="text"
-                  value={formData.bahan_bakar}
-                  onChange={(e) => setFormData(prev => ({ ...prev, bahan_bakar: e.target.value }))}
-                  className="input"
-                  placeholder="Contoh: Bensin, Solar, Listrik"
                   required
                 />
               </div>

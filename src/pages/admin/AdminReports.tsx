@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react'
-import { supabase } from '../../lib/supabase'
+import { peminjamanAPI } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
 import { BarChart3, Download, TrendingUp, MapPin, Car, FileText } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -55,47 +55,37 @@ const AdminReports: React.FC = () => {
       setLoading(true)
       
       // Fetch all bookings within date range
-      const { data: bookings, error: bookingsError } = await supabase
-        .from('peminjaman')
-        .select(`
-          *,
-          users:user_id (
-            nama,
-            email
-          ),
-          ruangan:ruangan_id (
-            nama,
-            lokasi
-          ),
-          kendaraan:kendaraan_id (
-            nama,
-            plat_nomor
-          )
-        `)
-        .gte('created_at', dateRange.start)
-        .lte('created_at', dateRange.end + 'T23:59:59')
-
-      if (bookingsError) throw bookingsError
+      const bookingsResponse = await peminjamanAPI.getAll()
+      const allBookings = bookingsResponse.data || []
+      
+      // Filter bookings by date range
+      const bookings = allBookings.filter(booking => {
+        const bookingDate = new Date(booking.created_at || '')
+        const startDate = new Date(dateRange.start)
+        const endDate = new Date(dateRange.end + 'T23:59:59')
+        
+        return bookingDate >= startDate && bookingDate <= endDate
+      })
 
       // Process data
       const totalBookings = bookings?.length || 0
-      const roomBookings = bookings?.filter(b => b.jenis_booking === 'ruangan').length || 0
-      const vehicleBookings = bookings?.filter(b => b.jenis_booking === 'kendaraan').length || 0
-      const pendingBookings = bookings?.filter(b => b.status === 'pending').length || 0
-      const approvedBookings = bookings?.filter(b => b.status === 'approved').length || 0
-      const rejectedBookings = bookings?.filter(b => b.status === 'rejected').length || 0
-      const completedBookings = bookings?.filter(b => b.status === 'completed').length || 0
+      const roomBookings = bookings?.filter(b => b.id_ruangan).length || 0
+      const vehicleBookings = bookings?.filter(b => b.id_kendaraan).length || 0
+      const pendingBookings = bookings?.filter(b => b.status === 'diajukan').length || 0
+      const approvedBookings = bookings?.filter(b => b.status === 'disetujui').length || 0
+      const rejectedBookings = bookings?.filter(b => b.status === 'ditolak').length || 0
+      const completedBookings = bookings?.filter(b => b.status === 'selesai').length || 0
 
       // Monthly data
       const monthlyMap = new Map()
       bookings?.forEach(booking => {
-        const month = format(parseISO(booking.created_at), 'MMM yyyy', { locale: id })
+        const month = format(parseISO(booking.created_at || ''), 'MMM yyyy', { locale: id })
         if (!monthlyMap.has(month)) {
           monthlyMap.set(month, { month, total: 0, rooms: 0, vehicles: 0 })
         }
         const data = monthlyMap.get(month)
         data.total++
-        if (booking.jenis_booking === 'ruangan') data.rooms++
+        if (booking.id_ruangan) data.rooms++
         else data.vehicles++
       })
       const monthlyData = Array.from(monthlyMap.values()).sort((a, b) => 
@@ -104,12 +94,12 @@ const AdminReports: React.FC = () => {
 
       // Popular rooms
       const roomMap = new Map()
-      bookings?.filter(b => b.jenis_booking === 'ruangan' && b.ruangan).forEach(booking => {
-        const key = booking.ruangan_id
+      bookings?.filter(b => b.id_ruangan).forEach(booking => {
+        const key = booking.id_ruangan!
         if (!roomMap.has(key)) {
           roomMap.set(key, {
-            nama: booking.ruangan.nama,
-            lokasi: booking.ruangan.lokasi,
+            nama: `Ruangan ${key}`,
+            lokasi: 'Lokasi tidak tersedia',
             count: 0
           })
         }
@@ -121,12 +111,12 @@ const AdminReports: React.FC = () => {
 
       // Popular vehicles
       const vehicleMap = new Map()
-      bookings?.filter(b => b.jenis_booking === 'kendaraan' && b.kendaraan).forEach(booking => {
-        const key = booking.kendaraan_id
+      bookings?.filter(b => b.id_kendaraan).forEach(booking => {
+        const key = booking.id_kendaraan!
         if (!vehicleMap.has(key)) {
           vehicleMap.set(key, {
-            nama: booking.kendaraan.nama,
-            plat_nomor: booking.kendaraan.plat_nomor,
+            nama: `Kendaraan ${key}`,
+            plat_nomor: 'Plat nomor tidak tersedia',
             count: 0
           })
         }
@@ -139,11 +129,11 @@ const AdminReports: React.FC = () => {
       // User activity
       const userMap = new Map()
       bookings?.forEach(booking => {
-        const key = booking.user_id
+        const key = booking.id_user || 'unknown'
         if (!userMap.has(key)) {
           userMap.set(key, {
-            nama: booking.users.nama,
-            email: booking.users.email,
+            nama: 'Nama tidak tersedia',
+            email: 'Email tidak tersedia',
             count: 0
           })
         }
@@ -180,28 +170,19 @@ const AdminReports: React.FC = () => {
     setExportLoading(true)
     try {
       // Fetch detailed booking data for export
-      const { data: bookings, error } = await supabase
-        .from('peminjaman')
-        .select(`
-          *,
-          users:user_id (
-            nama,
-            email
-          ),
-          ruangan:ruangan_id (
-            nama,
-            lokasi
-          ),
-          kendaraan:kendaraan_id (
-            nama,
-            plat_nomor
-          )
-        `)
-        .gte('created_at', dateRange.start)
-        .lte('created_at', dateRange.end + 'T23:59:59')
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
+      const bookingsResponse = await peminjamanAPI.getAll()
+      const allBookings = bookingsResponse.data || []
+      
+      // Filter and sort bookings by date range
+      const bookings = allBookings
+        .filter(booking => {
+          const bookingDate = new Date(booking.created_at || '')
+          const startDate = new Date(dateRange.start)
+          const endDate = new Date(dateRange.end + 'T23:59:59')
+          
+          return bookingDate >= startDate && bookingDate <= endDate
+        })
+        .sort((a, b) => new Date(b.created_at || '').getTime() - new Date(a.created_at || '').getTime())
 
       // Create CSV content
       const headers = [
@@ -219,17 +200,17 @@ const AdminReports: React.FC = () => {
       ]
 
       const rows = bookings?.map(booking => [
-        format(parseISO(booking.created_at), 'dd/MM/yyyy HH:mm'),
-        booking.jenis_booking,
-        booking.jenis_booking === 'ruangan' ? booking.ruangan?.nama : booking.kendaraan?.nama,
-        booking.jenis_booking === 'ruangan' ? booking.ruangan?.lokasi : booking.kendaraan?.plat_nomor,
-        booking.users?.nama,
-        booking.users?.email,
+        format(parseISO(booking.created_at!), 'dd/MM/yyyy HH:mm'),
+        booking.id_ruangan ? 'ruangan' : 'kendaraan',
+        booking.id_ruangan ? `Ruangan ID: ${booking.id_ruangan}` : `Kendaraan ID: ${booking.id_kendaraan}`,
+        booking.id_ruangan ? 'Lokasi tidak tersedia' : 'Plat nomor tidak tersedia',
+        'Nama pengguna tidak tersedia',
+        'Email tidak tersedia',
         format(parseISO(booking.tanggal_mulai), 'dd/MM/yyyy HH:mm'),
         format(parseISO(booking.tanggal_selesai), 'dd/MM/yyyy HH:mm'),
         booking.keperluan,
         booking.status,
-        booking.catatan_admin || ''
+        'Catatan admin tidak tersedia'
       ]) || []
 
       const csvContent = [headers, ...rows]

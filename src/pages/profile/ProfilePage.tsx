@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { supabase } from '../../lib/supabase'
+import { usersAPI } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
 import { User, Mail, Phone, UserCheck, Eye, EyeOff } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -47,18 +47,12 @@ const ProfilePage: React.FC = () => {
 
   const fetchUserProfile = async () => {
     try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('name, email, phone, role')
-        .eq('id', user?.id)
-        .single()
-
-      if (error) throw error
-
+      const response = await usersAPI.getById(user?.id_user || '')
+      const data = response.data
       setProfileData({
-        name: data.name || '',
+        name: data.nama || '',
         email: data.email || '',
-        phone: data.phone || '',
+        phone: data.no_telepon || '',
         role: data.role || ''
       })
     } catch (error) {
@@ -72,19 +66,14 @@ const ProfilePage: React.FC = () => {
     setLoading(true)
 
     try {
-      const { error } = await supabase
-        .from('users')
-        .update({
-          nama: profileData.name,
-          no_hp: profileData.phone
-        })
-        .eq('id_user', user?.id)
-
-      if (error) throw error
+      await usersAPI.update(user?.id_user || '', {
+        nama: profileData.name,
+        no_telepon: profileData.phone
+      })
 
       await updateProfile({
         nama: profileData.name,
-        no_hp: profileData.phone
+        no_telepon: profileData.phone
       })
 
       toast.success('Profil berhasil diperbarui')
@@ -112,11 +101,15 @@ const ProfilePage: React.FC = () => {
     setLoading(true)
 
     try {
-      const { error } = await supabase.auth.updateUser({
-        password: passwordData.newPassword
-      })
+      if (!user?.id_user) {
+        toast.error('User tidak ditemukan');
+        return;
+      }
 
-      if (error) throw error
+      await usersAPI.updatePassword(user.id_user, {
+         current_password: passwordData.currentPassword,
+         new_password: passwordData.newPassword
+       });
 
       setPasswordData({
         currentPassword: '',

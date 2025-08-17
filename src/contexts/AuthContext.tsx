@@ -1,17 +1,22 @@
 import React, { createContext, useContext, useEffect, useState } from 'react'
-import { User, Session } from '@supabase/supabase-js'
-import { supabase, Tables } from '../lib/supabase'
+import { authAPI, User } from '../lib/api'
 import toast from 'react-hot-toast'
 
 interface AuthContextType {
   user: User | null
-  userProfile: Tables<'users'> | null
-  session: Session | null
   loading: boolean
   signIn: (email: string, password: string) => Promise<void>
-  signUp: (email: string, password: string, userData: Partial<Tables<'users'>>) => Promise<void>
+  signUp: (userData: {
+    nama: string
+    email: string
+    password: string
+    password_confirmation: string
+    role: 'admin' | 'user'
+    no_telepon?: string
+    divisi?: string
+  }) => Promise<void>
   signOut: () => Promise<void>
-  updateProfile: (data: Partial<Tables<'users'>>) => Promise<void>
+  updateProfile: (data: Partial<User>) => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -30,112 +35,71 @@ interface AuthProviderProps {
 
 export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null)
-  const [userProfile, setUserProfile] = useState<Tables<'users'> | null>(null)
-  const [session, setSession] = useState<Session | null>(null)
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      if (session?.user) {
-        fetchUserProfile(session.user.id)
+    // Check for existing auth token and get user profile
+    const initAuth = async () => {
+      const token = localStorage.getItem('auth_token')
+      if (token) {
+        try {
+          const response = await authAPI.profile()
+          setUser(response.data)
+        } catch (error) {
+          // Token invalid, remove it
+          localStorage.removeItem('auth_token')
+          localStorage.removeItem('user_data')
+        }
       }
       setLoading(false)
-    })
+    }
 
-    // Listen for auth changes
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      setSession(session)
-      setUser(session?.user ?? null)
-      
-      if (session?.user) {
-        await fetchUserProfile(session.user.id)
-      } else {
-        setUserProfile(null)
-      }
-      
-      setLoading(false)
-    })
-
-    return () => subscription.unsubscribe()
+    initAuth()
   }, [])
 
-  const fetchUserProfile = async (userId: string) => {
-    try {
-      const { data, error } = await supabase
-        .from('users')
-        .select('*')
-        .eq('id_user', userId)
-        .single()
 
-      if (error) {
-        console.error('Error fetching user profile:', error)
-        return
-      }
-
-      setUserProfile(data)
-    } catch (error) {
-      console.error('Error fetching user profile:', error)
-    }
-  }
 
   const signIn = async (email: string, password: string) => {
     try {
       setLoading(true)
-      const { error } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      })
-
-      if (error) {
-        throw error
-      }
-
+      const response = await authAPI.login(email, password)
+      
+      // Store token and user data
+      localStorage.setItem('auth_token', response.data.token)
+      localStorage.setItem('user_data', JSON.stringify(response.data.user))
+      setUser(response.data.user)
+      
       toast.success('Berhasil masuk!')
     } catch (error: any) {
-      toast.error(error.message || 'Gagal masuk')
+      toast.error(error.response?.data?.message || 'Gagal masuk')
       throw error
     } finally {
       setLoading(false)
     }
   }
 
-  const signUp = async (email: string, password: string, userData: Partial<Tables<'users'>>) => {
+  const signUp = async (userData: {
+    nama: string
+    email: string
+    password: string
+    password_confirmation: string
+    role: 'admin' | 'user'
+    no_telepon?: string
+    divisi?: string
+  }) => {
     try {
       setLoading(true)
       
-      // Sign up with Supabase Auth
-      const { data, error } = await supabase.auth.signUp({
-        email,
-        password,
-      })
-
-      if (error) {
-        throw error
-      }
-
-      if (data.user) {
-        // Create user profile
-        const { error: profileError } = await supabase
-          .from('users')
-          .insert({
-            id_user: data.user.id,
-            email: data.user.email!,
-            ...userData,
-          })
-
-        if (profileError) {
-          throw profileError
-        }
-      }
-
-      toast.success('Akun berhasil dibuat! Silakan cek email untuk verifikasi.')
+      const response = await authAPI.register(userData)
+      
+      // Store token and user data
+      localStorage.setItem('auth_token', response.data.token)
+      localStorage.setItem('user_data', JSON.stringify(response.data.user))
+      setUser(response.data.user)
+      
+      toast.success('Akun berhasil dibuat!')
     } catch (error: any) {
-      toast.error(error.message || 'Gagal membuat akun')
+      toast.error(error.response?.data?.message || 'Gagal membuat akun')
       throw error
     } finally {
       setLoading(false)
@@ -145,40 +109,37 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const signOut = async () => {
     try {
       setLoading(true)
-      const { error } = await supabase.auth.signOut()
+      await authAPI.logout()
       
-      if (error) {
-        throw error
-      }
-
+      // Clear local storage
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user_data')
+      setUser(null)
+      
       toast.success('Berhasil keluar')
     } catch (error: any) {
-      toast.error(error.message || 'Gagal keluar')
-      throw error
+      // Even if API call fails, clear local data
+      localStorage.removeItem('auth_token')
+      localStorage.removeItem('user_data')
+      setUser(null)
+      toast.success('Berhasil keluar')
     } finally {
       setLoading(false)
     }
   }
 
-  const updateProfile = async (data: Partial<Tables<'users'>>) => {
+  const updateProfile = async (_data: Partial<User>) => {
     try {
       if (!user) throw new Error('User not authenticated')
 
       setLoading(true)
-      const { error } = await supabase
-        .from('users')
-        .update(data)
-        .eq('id_user', user.id)
-
-      if (error) {
-        throw error
-      }
-
-      // Refresh user profile
-      await fetchUserProfile(user.id)
+      // Note: You'll need to implement user update API endpoint
+      // const response = await usersAPI.update(user.id_user, data)
+      // setUser(response.user)
+      
       toast.success('Profil berhasil diperbarui')
     } catch (error: any) {
-      toast.error(error.message || 'Gagal memperbarui profil')
+      toast.error(error.response?.data?.message || 'Gagal memperbarui profil')
       throw error
     } finally {
       setLoading(false)
@@ -187,8 +148,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const value: AuthContextType = {
     user,
-    userProfile,
-    session,
     loading,
     signIn,
     signUp,

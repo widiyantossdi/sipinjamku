@@ -1,35 +1,12 @@
 import React, { useState, useEffect } from 'react'
 import { useAuth } from '../../contexts/AuthContext'
-import { supabase } from '../../lib/supabase'
+import { peminjamanAPI, Booking } from '../../lib/api'
 import LoadingSpinner from '../../components/UI/LoadingSpinner'
 import { formatDateTime, getStatusColor, getStatusText } from '../../utils'
-import { Calendar, Clock, MapPin, Car, FileText, QrCode } from 'lucide-react'
+import { Calendar, Clock, MapPin, Car, QrCode } from 'lucide-react'
 import toast from 'react-hot-toast'
 
-interface Booking {
-  id: string
-  jenis_peminjaman: 'ruangan' | 'kendaraan'
-  ruangan_id?: string
-  kendaraan_id?: string
-  tanggal_mulai: string
-  jam_mulai: string
-  tanggal_selesai: string
-  jam_selesai: string
-  keperluan: string
-  status: 'diajukan' | 'disetujui' | 'ditolak' | 'selesai'
-  qr_code_data?: string
-  dokumen_pendukung?: string
-  catatan_admin?: string
-  created_at: string
-  ruangan?: {
-    nama: string
-    lokasi: string
-  }
-  kendaraan?: {
-    nama: string
-    plat_nomor: string
-  }
-}
+
 
 const MyBookingsPage: React.FC = () => {
   const { user } = useAuth()
@@ -48,18 +25,9 @@ const MyBookingsPage: React.FC = () => {
   const fetchBookings = async () => {
     try {
       setLoading(true)
-      const { data, error } = await supabase
-        .from('peminjaman')
-        .select(`
-          *,
-          ruangan:ruangan_id(nama, lokasi),
-          kendaraan:kendaraan_id(nama, plat_nomor)
-        `)
-        .eq('user_id', user?.id)
-        .order('created_at', { ascending: false })
-
-      if (error) throw error
-      setBookings(data || [])
+      const response = await peminjamanAPI.getAll()
+      const userBookings = response.data?.filter(booking => booking.id_user === user?.id_user) || []
+      setBookings(userBookings)
     } catch (error) {
       console.error('Error fetching bookings:', error)
       toast.error('Gagal memuat data peminjaman')
@@ -73,36 +41,13 @@ const MyBookingsPage: React.FC = () => {
   )
 
   const generateQRCode = async (booking: Booking) => {
-    if (!booking.qr_code_data) {
-      toast.error('QR Code belum tersedia')
-      return
-    }
+    // Generate QR code using booking ID
     
     setSelectedBooking(booking)
     setShowQRModal(true)
   }
 
-  const downloadDocument = async (documentPath: string) => {
-    try {
-      const { data, error } = await supabase.storage
-        .from('documents')
-        .download(documentPath)
-      
-      if (error) throw error
-      
-      const url = URL.createObjectURL(data)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = documentPath.split('/').pop() || 'document'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      URL.revokeObjectURL(url)
-    } catch (error) {
-      console.error('Error downloading document:', error)
-      toast.error('Gagal mengunduh dokumen')
-    }
-  }
+  // Document download feature removed
 
   if (loading) {
     return (
@@ -169,7 +114,7 @@ const MyBookingsPage: React.FC = () => {
       ) : (
         <div className="space-y-4">
           {filteredBookings.map((booking) => (
-            <div key={booking.id} className="card">
+            <div key={booking.id_peminjaman} className="card">
               <div className="card-content">
                 <div className="flex items-start justify-between">
                   <div className="flex-1">
@@ -182,15 +127,15 @@ const MyBookingsPage: React.FC = () => {
                       <div>
                         <h3 className="font-semibold text-gray-900">
                           {booking.jenis_peminjaman === 'ruangan'
-                            ? booking.ruangan?.nama
-                            : booking.kendaraan?.nama
+                            ? `Ruangan ID: ${booking.id_ruangan}`
+                            : `Kendaraan ID: ${booking.id_kendaraan}`
                           }
                         </h3>
                         <p className="text-sm text-gray-600">
-                          {booking.jenis_peminjaman === 'ruangan'
-                            ? booking.ruangan?.lokasi
-                            : booking.kendaraan?.plat_nomor
-                          }
+                            {booking.jenis_peminjaman === 'ruangan'
+                              ? `Ruangan ID: ${booking.id_ruangan}`
+                              : `Kendaraan ID: ${booking.id_kendaraan}`
+                            }
                         </p>
                       </div>
                     </div>
@@ -211,13 +156,7 @@ const MyBookingsPage: React.FC = () => {
                       <p className="text-gray-900">{booking.keperluan}</p>
                     </div>
 
-                    {booking.catatan_admin && (
-                      <div className="mb-4 p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                        <p className="text-sm text-yellow-800">
-                          <strong>Catatan Admin:</strong> {booking.catatan_admin}
-                        </p>
-                      </div>
-                    )}
+                    {/* Admin notes not available in current schema */}
                   </div>
 
                   <div className="flex flex-col items-end gap-3">
@@ -228,7 +167,7 @@ const MyBookingsPage: React.FC = () => {
                     </span>
 
                     <div className="flex gap-2">
-                      {booking.status === 'disetujui' && booking.qr_code_data && (
+                      {booking.status === 'disetujui' && (
                         <button
                           onClick={() => generateQRCode(booking)}
                           className="btn btn-outline btn-sm"
@@ -238,15 +177,7 @@ const MyBookingsPage: React.FC = () => {
                         </button>
                       )}
                       
-                      {booking.dokumen_pendukung && (
-                        <button
-                          onClick={() => downloadDocument(booking.dokumen_pendukung!)}
-                          className="btn btn-outline btn-sm"
-                          title="Unduh Dokumen"
-                        >
-                          <FileText className="h-4 w-4" />
-                        </button>
-                      )}
+                      {/* Document download feature not available */}
                     </div>
                   </div>
                 </div>
@@ -266,7 +197,7 @@ const MyBookingsPage: React.FC = () => {
                 <div className="w-48 h-48 mx-auto bg-gray-100 border-2 border-dashed border-gray-300 rounded-lg flex items-center justify-center">
                   <QrCode className="h-16 w-16 text-gray-400" />
                   <div className="text-xs text-gray-500 mt-2">
-                    QR Code: {selectedBooking.qr_code_data}
+                    QR Code: {selectedBooking.id_peminjaman}
                   </div>
                 </div>
               </div>
